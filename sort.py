@@ -1,13 +1,12 @@
 import os
 import re
-from openai import OpenAI
+from groq import Groq
 from dotenv import load_dotenv
 
 load_dotenv()
 
-CEREBRAS_API_KEY = os.getenv("CEREBRAS_API_KEY", "")
-CEREBRAS_API_BASE = os.getenv("CEREBRAS_API_BASE", "https://api.cerebras.ai/v1")
-CEREBRAS_MODEL = os.getenv("CEREBRAS_MODEL", "gpt-oss-120b")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "qwen/qwen3-32b")
 
 SORT_SYSTEM_PROMPT = """You are a LEGO sorting assistant. Given a LEGO part name and ID, tell me which box and compartment it goes into.
 
@@ -150,27 +149,23 @@ def lookup_cavity(box, compartment):
 
 
 def classify_part(part_name, part_id):
-    api_key = CEREBRAS_API_KEY
-    if not api_key:
+    if not GROQ_API_KEY:
         return "Box 5 — Detail: Empty/overflow"
 
-    client = OpenAI(
-        api_key=api_key,
-        base_url=CEREBRAS_API_BASE,
-    )
+    client = Groq(api_key=GROQ_API_KEY)
 
     try:
         response = client.chat.completions.create(
-            model=CEREBRAS_MODEL,
+            model=GROQ_MODEL,
             messages=[
                 {"role": "system", "content": SORT_SYSTEM_PROMPT},
                 {"role": "user", "content": f"Part name: {part_name}, Part ID: {part_id}"},
             ],
             temperature=0.0,
-            max_tokens=500,
+            max_completion_tokens=500,
+            top_p=0.95,
         )
-        msg = response.choices[0].message
-        text = msg.content or msg.reasoning or ""
+        text = response.choices[0].message.content or ""
         matches = list(re.finditer(r"Box\s+\d+\s*[—\-–]\s*(?:Small|Big|Giant|Enormous|Detail)\s*:?\s*[^.\n]+", text))
         if matches:
             return matches[-1].group(0).strip()
