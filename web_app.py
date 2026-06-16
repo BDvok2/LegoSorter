@@ -46,14 +46,14 @@ def merge_duplicates():
     merged = {}
     seen_order = []
     for p in parts:
-        pid = p["part_id"]
-        if pid in merged:
-            merged[pid]["count"] = merged[pid].get("count", 1) + 1
+        key = (p["part_id"], p.get("color", ""))
+        if key in merged:
+            merged[key]["count"] = merged[key].get("count", 1) + 1
         else:
             p.setdefault("count", 1)
-            merged[pid] = p
-            seen_order.append(pid)
-    ordered = [merged[pid] for pid in seen_order]
+            merged[key] = p
+            seen_order.append(key)
+    ordered = [merged[k] for k in seen_order]
     with open(PARTS_FILE, "w") as f:
         json.dump(ordered, f, indent=2)
 
@@ -78,9 +78,9 @@ def save_parts(parts):
         json.dump(parts, f, indent=2)
 
 
-def find_part_by_id(parts, part_id):
+def find_part_by_id_color(parts, part_id, color):
     for i, p in enumerate(parts):
-        if p["part_id"] == part_id:
+        if p["part_id"] == part_id and p.get("color", "") == (color or ""):
             return i, p
     return None, None
 
@@ -159,7 +159,7 @@ async def detect(file: UploadFile = File(...)):
         existing_count = 0
         existing_parts = load_parts()
         for ep in existing_parts:
-            if ep["part_id"] == part_id:
+            if ep["part_id"] == part_id and ep.get("color", "") == (color or ""):
                 existing_count = ep.get("count", 1)
                 break
 
@@ -233,7 +233,7 @@ async def save_part(
             f.write(contents)
 
         parts = load_parts()
-        idx, existing = find_part_by_id(parts, part_id)
+        idx, existing = find_part_by_id_color(parts, part_id, color)
 
         if existing is not None:
             existing["count"] = existing.get("count", 1) + count
