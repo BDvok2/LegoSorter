@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Lego Sort</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+
+#camera{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}
+
+#controls{position:fixed;bottom:48px;left:0;right:0;display:flex;justify-content:center;align-items:center;z-index:10;gap:60px}
+#capture-btn{width:68px;height:68px;border-radius:50%;border:2px solid rgba(255,255,255,0.8);background:transparent;cursor:pointer;position:relative;transition:0.1s}
+#capture-btn:active{transform:scale(0.92)}
+#capture-btn::after{content:'';position:absolute;inset:5px;border-radius:50%;background:rgba(255,255,255,0.9)}
+
+#list-btn{width:44px;height:44px;border:none;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:white;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:0.15s}
+#list-btn:active{background:rgba(255,255,255,0.25)}
+
+#flash-overlay{position:fixed;inset:0;z-index:5;background:white;transition:opacity 0.15s;opacity:0;pointer-events:none}
+#flash-overlay.flash{opacity:1}
+#loading{position:fixed;bottom:140px;left:50%;transform:translateX(-50%);z-index:10;color:rgba(255,255,255,0.7);font-size:13px;display:none;letter-spacing:0.5px;text-transform:uppercase}
+
+#result-overlay{position:fixed;inset:0;z-index:20;display:none;justify-content:center;align-items:flex-end;padding:32px}
+#result-overlay.show{display:flex}
+#result-card{background:#fff;width:100%;max-width:400px;padding:32px}
+#result-card .label{color:#999;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px}
+#result-card h2{font-size:22px;font-weight:500;color:#000;margin-bottom:2px;line-height:1.2}
+#result-card .sub{font-size:13px;color:#999;margin-bottom:16px}
+#result-card .box{font-size:36px;font-weight:300;color:#000;letter-spacing:-1px;margin:12px 0 2px}
+#result-card .compartment{font-size:16px;font-weight:400;color:#555;margin-bottom:4px}
+#result-card .cavity{font-size:12px;color:#999;margin-bottom:20px}
+#result-card .actions{display:flex;gap:8px}
+#result-card .actions button{flex:1;padding:12px;border:1px solid #000;font-size:13px;cursor:pointer;font-weight:400;letter-spacing:0.3px;background:#fff;color:#000;transition:0.1s}
+#result-card .actions button:active{background:#000;color:#fff}
+#result-card .actions button.primary{background:#000;color:#fff}
+#result-card .actions button.primary:active{background:#fff;color:#000}
+#error-msg{color:#e00;font-size:12px;margin:8px 0}
+
+#list-view{position:fixed;inset:0;z-index:30;display:none;background:#fff;flex-direction:column}
+#list-view.show{display:flex}
+#list-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #eee}
+#list-header h1{font-size:20px;font-weight:500;color:#000}
+#list-header button{border:none;background:none;font-size:13px;cursor:pointer;color:#888;padding:4px 0;letter-spacing:0.3px}
+#list-header button:active{color:#000}
+#list-items{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+
+.box-group{border-bottom:1px solid #000;margin:0}
+.box-group:first-child{border-top:1px solid #000}
+.box-head{padding:14px 20px 10px;font-size:15px;font-weight:600;color:#000;letter-spacing:-0.3px}
+.cavity-group{padding:0 20px}
+.cavity-head{display:flex;align-items:baseline;gap:8px;padding:10px 0 6px;border-bottom:1px solid #f0f0f0}
+.cavity-head .num{font-size:11px;font-weight:500;color:#bbb;letter-spacing:0.3px}
+.cavity-head .name{font-size:13px;color:#666}
+
+.item{display:flex;align-items:flex-start;gap:12px;padding:8px 0 8px 24px;border-bottom:1px solid #f5f5f5;cursor:pointer;transition:0.1s}
+.item:active{background:#f8f8f8}
+.item img{width:48px;height:48px;object-fit:cover;border:1px solid #eee;flex-shrink:0}
+.item .info{flex:1;min-width:0}
+.item .info .pid{font-size:10px;color:#ccc;letter-spacing:0.3px;margin-bottom:1px;text-transform:uppercase}
+.item .info .name{font-size:12px;color:#333;font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:1px}
+.item .del{background:none;border:none;color:#ddd;font-size:14px;cursor:pointer;padding:2px;line-height:1;transition:0.1s;align-self:center}
+.item .del:active{color:#e00}
+
+#list-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;color:#ccc;font-size:14px;gap:8px}
+#list-empty span{font-size:32px;opacity:0.3}
+
+#detail-view{position:fixed;inset:0;z-index:40;display:none;background:#fff;flex-direction:column}
+#detail-view.show{display:flex}
+#detail-view .back{padding:16px 20px;border:none;background:none;font-size:13px;color:#888;cursor:pointer;text-align:left;border-bottom:1px solid #eee;letter-spacing:0.3px}
+#detail-view .back:active{color:#000}
+#detail-content{flex:1;overflow-y:auto;padding:20px}
+#detail-content img{width:100%;max-height:300px;object-fit:cover;border:1px solid #eee;margin-bottom:20px}
+#detail-content .label{color:#999;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px}
+#detail-content .val{font-size:20px;font-weight:400;color:#000;margin-bottom:16px}
+#detail-content .row{margin-bottom:8px}
+#detail-content .row .label{font-size:12px;color:#aaa;letter-spacing:0.3px;text-transform:none}
+#detail-content .row .val{font-size:14px;font-weight:400;color:#000;margin-bottom:0}
+</style>
+</head>
+<body>
+
+<video id="camera" autoplay playsinline></video>
+<div id="flash-overlay"></div>
+<div id="loading">Analyzing</div>
+<div id="controls">
+  <div style="width:44px"></div>
+  <button id="capture-btn" aria-label="Capture"></button>
+  <button id="list-btn">&#x2630;</button>
+</div>
+
+<div id="result-overlay">
+  <div id="result-card">
+    <div class="label">Detected</div>
+    <h2 id="r-part-name">-</h2>
+    <div class="sub" id="r-part-id"></div>
+    <div class="box" id="r-box">-</div>
+    <div class="compartment" id="r-compartment">-</div>
+    <div class="cavity" id="r-cavity"></div>
+    <div id="error-msg"></div>
+    <div class="actions">
+      <button id="r-discard">Discard</button>
+      <button class="primary" id="r-add">Add</button>
+    </div>
+  </div>
+</div>
+
+<div id="list-view">
+  <div id="list-header">
+    <h1>Collection</h1>
+    <button id="list-close">Close</button>
+  </div>
+  <div id="list-items">
+    <div id="list-empty"><span>&#x25A1;</span>No parts yet</div>
+  </div>
+</div>
+
+<div id="detail-view">
+  <button class="back" id="detail-back">&#x2190; Back</button>
+  <div id="detail-content"></div>
+</div>
+
+<script>
+const video = document.getElementById('camera');
+const canvas = document.createElement('canvas');
+const captureBtn = document.getElementById('capture-btn');
+const listBtn = document.getElementById('list-btn');
+const flashOverlay = document.getElementById('flash-overlay');
+const loading = document.getElementById('loading');
+const resultOverlay = document.getElementById('result-overlay');
+const errorMsg = document.getElementById('error-msg');
+const listView = document.getElementById('list-view');
+const listItems = document.getElementById('list-items');
+const listEmpty = document.getElementById('list-empty');
+const detailView = document.getElementById('detail-view');
+const detailContent = document.getElementById('detail-content');
+let stream = null;
+let lastResult = null;
+
+async function startCamera(){
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1920},height:{ideal:1080}}});
+    video.srcObject = stream;
+  }catch(e){
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{exact:'environment'}}});
+      video.srcObject = stream;
+    }catch(e2){alert('Camera access denied.')}
+  }
+}
+startCamera();
+
+captureBtn.addEventListener('click', async () => {
+  flashOverlay.classList.add('flash');
+  setTimeout(() => flashOverlay.classList.remove('flash'), 150);
+  canvas.width = video.videoWidth || 1280;
+  canvas.height = video.videoHeight || 720;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  loading.style.display = 'block';
+  errorMsg.textContent = '';
+  canvas.toBlob(async (blob) => {
+    const fd = new FormData();
+    fd.append('file', blob, 'photo.jpg');
+    try{
+      const res = await fetch('/api/detect', {method:'POST',body:fd});
+      const data = await res.json();
+      if(data.error){
+        errorMsg.textContent = data.error;
+        document.getElementById('r-part-name').textContent = '-';
+        document.getElementById('r-part-id').textContent = '';
+        document.getElementById('r-box').textContent = '-';
+        document.getElementById('r-compartment').textContent = '';
+        document.getElementById('r-cavity').textContent = '';
+        resultOverlay.classList.add('show');
+      }else{
+        document.getElementById('r-part-name').textContent = data.part_name;
+        document.getElementById('r-part-id').textContent = '#' + data.part_id;
+        document.getElementById('r-box').textContent = 'Box ' + data.box;
+        document.getElementById('r-compartment').textContent = data.compartment;
+        const cav = data.cavity ? 'Cavity ' + data.cavity : '';
+        document.getElementById('r-cavity').textContent = cav;
+        lastResult = data;
+        lastResult.blob = blob;
+        resultOverlay.classList.add('show');
+      }
+    }catch(e){
+      errorMsg.textContent = e.message;
+      resultOverlay.classList.add('show');
+    }finally{
+      loading.style.display = 'none';
+    }
+  }, 'image/jpeg', 0.85);
+});
+
+document.getElementById('r-discard').addEventListener('click', () => { resultOverlay.classList.remove('show'); lastResult = null; });
+document.getElementById('r-add').addEventListener('click', async () => {
+  if(!lastResult) return;
+  document.getElementById('r-add').textContent = 'Saving...';
+  const fd = new FormData();
+  fd.append('file', lastResult.blob, 'photo.jpg');
+  fd.append('part_id', lastResult.part_id);
+  fd.append('part_name', lastResult.part_name);
+  fd.append('box', lastResult.box);
+  fd.append('compartment', lastResult.compartment);
+  fd.append('cavity', lastResult.cavity || '');
+  try{
+    const res = await fetch('/api/save', {method:'POST',body:fd});
+    const r = await res.json();
+    if(r.ok){
+      resultOverlay.classList.remove('show');
+      lastResult = null;
+    }
+  }catch(e){errorMsg.textContent = e.message}
+  document.getElementById('r-add').textContent = 'Add';
+});
+
+// List
+listBtn.addEventListener('click', () => { loadList(); listView.classList.add('show'); });
+document.getElementById('list-close').addEventListener('click', () => { listView.classList.remove('show'); });
+
+async function loadList(){
+  try{
+    const res = await fetch('/api/parts');
+    const parts = await res.json();
+    listItems.innerHTML = '';
+    if(parts.length === 0){
+      listItems.appendChild(listEmpty);
+      return;
+    }
+    const grouped = {};
+    parts.forEach(p => {
+      const key = p.box || '?';
+      if(!grouped[key]) grouped[key] = {};
+      const ckey = p.cavity ? 'cavity_' + p.cavity : 'cavity_0';
+      if(!grouped[key][ckey]) grouped[key][ckey] = {name: p.compartment || '', cavity: p.cavity, items: []};
+      grouped[key][ckey].items.push(p);
+    });
+    const sortedBoxes = Object.keys(grouped).sort((a,b) => Number(a) - Number(b));
+    sortedBoxes.forEach(box => {
+      const div = document.createElement('div');
+      div.className = 'box-group';
+      let html = `<div class="box-head">Box ${box}</div>`;
+      const cavities = grouped[box];
+      const sortedCavs = Object.keys(cavities).sort((a,b) => {
+        const na = parseInt(a.replace('cavity_',''));
+        const nb = parseInt(b.replace('cavity_',''));
+        return na - nb;
+      });
+      sortedCavs.forEach(ckey => {
+        const c = cavities[ckey];
+        html += `<div class="cavity-group"><div class="cavity-head"><span class="num">${c.cavity ? 'Cavity ' + c.cavity : ''}</span><span class="name">${c.name}</span></div>`;
+        c.items.forEach(p => {
+          html += `<div class="item" data-uid="${p.uid}"><img src="/data/photos/${p.photo}" alt="${p.part_id}" loading="lazy"><div class="info"><div class="pid">#${p.part_id}</div><div class="name">${p.part_name}</div></div><button class="del" data-uid="${p.uid}">&#x2715;</button></div>`;
+        });
+        html += `</div>`;
+      });
+      div.innerHTML = html;
+      div.querySelectorAll('.item').forEach(el => {
+        const uid = el.dataset.uid;
+        el.querySelector('.info').addEventListener('click', () => showDetail(parts.find(p => p.uid === uid)));
+        el.querySelector('.del').addEventListener('click', async (e) => {
+          e.stopPropagation();
+          await fetch('/api/parts/' + uid, {method:'DELETE'});
+          loadList();
+        });
+      });
+      listItems.appendChild(div);
+    });
+  }catch(e){}
+}
+
+function showDetail(p){
+  detailContent.innerHTML = `<img src="/data/photos/${p.photo}" alt="${p.part_id}">
+<div class="label">Part ID</div><div class="val">${p.part_id}</div>
+<div class="label">Name</div><div class="val">${p.part_name}</div>
+<div class="row"><span class="label">Box</span><span class="val">${p.box}</span></div>
+<div class="row"><span class="label">Cavity</span><span class="val">${p.cavity || '-'}</span></div>
+<div class="row"><span class="label">Compartment</span><span class="val">${p.compartment}</span></div>`;
+  detailView.classList.add('show');
+}
+
+document.getElementById('detail-back').addEventListener('click', () => { detailView.classList.remove('show'); });
+</script>
+</body>
+</html>
