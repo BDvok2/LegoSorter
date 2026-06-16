@@ -65,6 +65,10 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:-ap
 .item .info .name{font-size:12px;color:#333;font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:1px}
 .item .del{background:none;border:none;color:#ddd;font-size:14px;cursor:pointer;padding:2px;line-height:1;transition:0.1s;align-self:center}
 .item .del:active{color:#e00}
+.cnt-ctl{display:flex;align-items:center;gap:4px;flex-shrink:0;margin-right:4px}
+.cnt-ctl button{width:24px;height:24px;border:1px solid #ddd;background:#fff;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#666;padding:0;line-height:1}
+.cnt-ctl button:active{background:#eee}
+.cnt-ctl .cval{font-size:13px;font-weight:500;min-width:18px;text-align:center;color:#333}
 
 #list-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;color:#ccc;font-size:14px;gap:8px}
 #list-empty span{font-size:32px;opacity:0.3}
@@ -104,6 +108,11 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:-ap
     <div class="box" id="r-box">-</div>
     <div class="compartment" id="r-compartment">-</div>
     <div class="cavity" id="r-cavity"></div>
+    <div id="r-count" style="margin:12px 0;display:flex;align-items:center;gap:12px;justify-content:center">
+      <button id="r-dec" style="width:36px;height:36px;border:1px solid #000;background:#fff;font-size:18px;cursor:pointer">−</button>
+      <span id="r-count-val" style="font-size:22px;font-weight:400;min-width:32px;text-align:center">1</span>
+      <button id="r-inc" style="width:36px;height:36px;border:1px solid #000;background:#fff;font-size:18px;cursor:pointer">+</button>
+    </div>
     <div id="error-msg"></div>
     <div class="actions">
       <button id="r-discard">Discard</button>
@@ -236,8 +245,11 @@ captureBtn.addEventListener('click', async () => {
         document.getElementById('r-compartment').textContent = data.compartment;
         const cav = data.cavity ? 'Cavity ' + data.cavity : '';
         document.getElementById('r-cavity').textContent = cav;
+        const initCount = data.existing_count || 1;
+        document.getElementById('r-count-val').textContent = initCount;
         lastResult = data;
         lastResult.blob = blob;
+        lastResult.adjustCount = initCount;
         resultOverlay.classList.add('show');
       }
     }catch(e){
@@ -249,6 +261,16 @@ captureBtn.addEventListener('click', async () => {
   }, 'image/jpeg', 0.85);
 });
 
+document.getElementById('r-dec').addEventListener('click', () => {
+  const el = document.getElementById('r-count-val');
+  let v = parseInt(el.textContent) || 1;
+  if(v > 1){ v--; el.textContent = v; if(lastResult) lastResult.adjustCount = v; }
+});
+document.getElementById('r-inc').addEventListener('click', () => {
+  const el = document.getElementById('r-count-val');
+  let v = parseInt(el.textContent) || 1;
+  v++; el.textContent = v; if(lastResult) lastResult.adjustCount = v;
+});
 document.getElementById('r-discard').addEventListener('click', () => { resultOverlay.classList.remove('show'); lastResult = null; unfreeze(); });
 document.getElementById('r-add').addEventListener('click', async () => {
   if(!lastResult) return;
@@ -258,6 +280,7 @@ document.getElementById('r-add').addEventListener('click', async () => {
   fd.append('part_id', lastResult.part_id);
   fd.append('part_name', lastResult.part_name);
   fd.append('color', lastResult.color || '');
+  fd.append('count', lastResult.adjustCount || 1);
   fd.append('box', lastResult.box);
   fd.append('compartment', lastResult.compartment);
   fd.append('cavity', lastResult.cavity || '');
@@ -318,7 +341,8 @@ async function loadList(){
         const c = cavities[ckey];
         html += `<div class="cavity-group"><div class="cavity-head"><span class="num">${c.cavity ? 'Cavity ' + c.cavity : ''}</span><span class="name">${c.name}</span></div>`;
         c.items.forEach(p => {
-          html += `<div class="item" data-uid="${p.uid}"><img src="/data/photos/${p.photo}" alt="${p.part_id}" loading="lazy"><div class="info"><div class="pid">#${p.part_id}${p.color ? '  \u2022  ' + p.color : ''}</div><div class="name">${p.part_name}</div></div><button class="del" data-uid="${p.uid}">&#x2715;</button></div>`;
+          const cnt = p.count || 1;
+          html += `<div class="item" data-uid="${p.uid}"><img src="/data/photos/${p.photo}" alt="${p.part_id}" loading="lazy"><div class="info"><div class="pid">#${p.part_id}${p.color ? '  \u2022  ' + p.color : ''}</div><div class="name">${p.part_name}</div></div><div class="cnt-ctl"><button class="cdec" data-uid="${p.uid}">−</button><span class="cval">${cnt}</span><button class="cinc" data-uid="${p.uid}">+</button></div><button class="del" data-uid="${p.uid}">&#x2715;</button></div>`;
         });
         html += `</div>`;
       });
@@ -331,6 +355,23 @@ async function loadList(){
           await fetch('/api/parts/' + uid, {method:'DELETE'});
           loadList();
         });
+        const cdec = el.querySelector('.cdec');
+        const cinc = el.querySelector('.cinc');
+        const cval = el.querySelector('.cval');
+        if(cdec) cdec.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const fd = new FormData(); fd.append('uid', uid); fd.append('delta', '-1');
+          const res = await fetch('/api/adjust-count', {method:'POST',body:fd});
+          const r = await res.json();
+          if(r.ok){ cval.textContent = r.count; if(r.count === 0) loadList(); }
+        });
+        if(cinc) cinc.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const fd = new FormData(); fd.append('uid', uid); fd.append('delta', '1');
+          const res = await fetch('/api/adjust-count', {method:'POST',body:fd});
+          const r = await res.json();
+          if(r.ok){ cval.textContent = r.count; }
+        });
       });
       listItems.appendChild(div);
     });
@@ -342,6 +383,7 @@ function showDetail(p){
 <div class="label">Part ID</div><div class="val">${p.part_id}</div>
 <div class="label">Name</div><div class="val">${p.part_name}</div>
 <div class="row"><span class="label">Color</span><span class="val">${p.color || '-'}</span></div>
+<div class="row"><span class="label">Count</span><span class="val">${p.count || 1}</span></div>
 <div class="row"><span class="label">Box</span><span class="val">${p.box}</span></div>
 <div class="row"><span class="label">Cavity</span><span class="val">${p.cavity || '-'}</span></div>
 <div class="row"><span class="label">Compartment</span><span class="val">${p.compartment}</span></div>`;

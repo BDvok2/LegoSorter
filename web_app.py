@@ -40,19 +40,49 @@ if not os.path.exists(PARTS_FILE):
         f.write("[]")
 
 
+def merge_duplicates():
+    with open(PARTS_FILE, "r") as f:
+        parts = json.load(f)
+    merged = {}
+    seen_order = []
+    for p in parts:
+        pid = p["part_id"]
+        if pid in merged:
+            merged[pid]["count"] = merged[pid].get("count", 1) + 1
+        else:
+            p.setdefault("count", 1)
+            merged[pid] = p
+            seen_order.append(pid)
+    ordered = [merged[pid] for pid in seen_order]
+    with open(PARTS_FILE, "w") as f:
+        json.dump(ordered, f, indent=2)
+
+
+merge_duplicates()
+
+
 def load_parts():
     with open(PARTS_FILE, "r") as f:
         parts = json.load(f)
     for p in parts:
-        if "cavity" not in p or not p["cavity"]:
+        p.setdefault("count", 1)
+        if not p.get("cavity"):
             _, _, _, cavity = sort.classify(p["part_name"], p["part_id"])
             p["cavity"] = cavity
+    save_parts(parts)
     return parts
 
 
 def save_parts(parts):
     with open(PARTS_FILE, "w") as f:
         json.dump(parts, f, indent=2)
+
+
+def find_part_by_id(parts, part_id):
+    for i, p in enumerate(parts):
+        if p["part_id"] == part_id:
+            return i, p
+    return None, None
 
 
 app.mount("/data/photos", StaticFiles(directory=PHOTOS_DIR), name="photos")
@@ -75,6 +105,19 @@ async def delete_part(part_uid: str):
     parts = [p for p in parts if p["uid"] != part_uid]
     save_parts(parts)
     return JSONResponse({"ok": True})
+
+
+@app.post("/api/adjust-count")
+async def adjust_count(uid: str = Form(""), delta: int = Form(1)):
+    parts = load_parts()
+    for p in parts:
+        if p["uid"] == uid:
+            p["count"] = max(0, p.get("count", 1) + delta)
+            if p["count"] == 0:
+                parts = [x for x in parts if x["uid"] != uid]
+            save_parts(parts)
+            return JSONResponse({"ok": True, "count": p.get("count", 0) if p.get("count", 0) > 0 else 0})
+    return JSONResponse({"error": "Not found"}, status_code=404)
 
 
 @app.post("/api/detect")
@@ -113,6 +156,13 @@ async def detect(file: UploadFile = File(...)):
 
         sort_result, box, compartment, cavity = sort.classify(part_name, part_id)
 
+        existing_count = 0
+        existing_parts = load_parts()
+        for ep in existing_parts:
+            if ep["part_id"] == part_id:
+                existing_count = ep.get("count", 1)
+                break
+
         bbox_raw = det.get("bounding_boxes", [{}])[0]
         bbox = None
         if bbox_raw.get("left") is not None:
@@ -135,6 +185,7 @@ async def detect(file: UploadFile = File(...)):
             "compartment": compartment,
             "cavity": cavity,
             "bbox": bbox,
+            "existing_count": existing_count,
         })
 
     except Exception as e:
@@ -147,6 +198,7 @@ async def save_part(
     part_id: str = Form(""),
     part_name: str = Form(""),
     color: str = Form(""),
+    count: int = Form(1),
     box: str = Form(""),
     compartment: str = Form(""),
     cavity: str = Form(""),
@@ -180,23 +232,33 @@ async def save_part(
         with open(photo_path, "wb") as f:
             f.write(contents)
 
-        entry = {
-            "uid": uid,
-            "part_id": part_id,
-            "part_name": part_name,
-            "color": color,
-            "box": box,
-            "compartment": compartment,
-            "cavity": cavity,
-            "photo": photo_name,
-            "created": ts,
-        }
-
         parts = load_parts()
-        parts.insert(0, entry)
-        save_parts(parts)
+        idx, existing = find_part_by_id(parts, part_id)
 
-        return JSONResponse({"ok": True, "uid": uid})
+        if existing is not None:
+            existing["count"] = existing.get("count", 1) + count
+            existing["photo"] = photo_name
+            if color:
+                existing["color"] = color
+            existing["created"] = ts
+            uid = existing["uid"]
+        else:
+            entry = {
+                "uid": uid,
+                "part_id": part_id,
+                "part_name": part_name,
+                "color": color,
+                "count": count,
+                "box": box,
+                "compartment": compartment,
+                "cavity": cavity,
+                "photo": photo_name,
+                "created": ts,
+            }
+            parts.insert(0, entry)
+
+        save_parts(parts)
+        return JSONResponse({"ok": True, "uid": uid, "merged": existing is not None})
 
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)

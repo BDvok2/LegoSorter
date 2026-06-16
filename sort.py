@@ -186,8 +186,14 @@ def parse_sort_result(result):
     return None, result
 
 
+_CACHE: dict = {}
+
 def classify(part_name, part_id):
+    if part_id in _CACHE:
+        return _CACHE[part_id]
     result = classify_part(part_name, part_id)
     box, compartment = parse_sort_result(result)
     cavity = lookup_cavity(box, compartment)
-    return result, box, compartment, cavity
+    cached = (result, box, compartment, cavity)
+    _CACHE[part_id] = cached
+    return cached
