@@ -1,17 +1,25 @@
+import os
 import cv2
 import requests
 import time
+from dotenv import load_dotenv
 
-import config
+load_dotenv()
+
 import groups
 import color_detect
 
+IMAGE_FILE = os.getenv("IMAGE_FILE", "assets/test.jpg")
+API_URL = os.getenv("API_URL", "https://api.brickognize.com/predict/")
+REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "5"))
+CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.5"))
+
 
 def load_image():
-    frame = cv2.imread(config.IMAGE_FILE)
+    frame = cv2.imread(IMAGE_FILE)
 
     if frame is None:
-        print("Failed to load image:", config.IMAGE_FILE)
+        print("Failed to load image:", IMAGE_FILE)
         return None
 
     return frame
@@ -21,9 +29,9 @@ def send_to_api():
     try:
         start = time.time()
 
-        with open(config.IMAGE_FILE, "rb") as img:
+        with open(IMAGE_FILE, "rb") as img:
             response = requests.post(
-                config.API_URL,
+                API_URL,
                 headers={"accept": "application/json"},
                 files={
                     "query_image": (
@@ -32,7 +40,7 @@ def send_to_api():
                         "image/jpeg"
                     )
                 },
-                timeout=config.REQUEST_TIMEOUT
+                timeout=REQUEST_TIMEOUT
             )
 
         response.raise_for_status()
@@ -59,7 +67,7 @@ def detect():
     part = data["items"][0]
     score = part.get("score", 0)
 
-    if score < config.CONFIDENCE_THRESHOLD:
+    if score < CONFIDENCE_THRESHOLD:
         print(f"Low confidence: {score:.2f}")
         return
 

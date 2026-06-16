@@ -1,7 +1,13 @@
+import os
 import cv2
 import numpy as np
 import math
-import config
+from dotenv import load_dotenv
+
+load_dotenv()
+
+MIN_VALID_PIXELS = int(os.getenv("MIN_VALID_PIXELS", "50"))
+KMEANS_CLUSTERS = int(os.getenv("KMEANS_CLUSTERS", "3"))
 
 
 LEGO_COLORS = {
@@ -42,14 +48,14 @@ def detect_color(frame, bbox):
     pixels = hsv.reshape(-1, 3)
     pixels = pixels[pixels[:, 2] > 40]
 
-    if len(pixels) < config.MIN_VALID_PIXELS:
+    if len(pixels) < MIN_VALID_PIXELS:
         return None
 
     pixels = np.float32(pixels)
 
     _, labels, centers = cv2.kmeans(
         pixels,
-        config.KMEANS_CLUSTERS,
+        KMEANS_CLUSTERS,
         None,
         (
             cv2.TERM_CRITERIA_EPS +

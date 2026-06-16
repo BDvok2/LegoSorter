@@ -1,8 +1,13 @@
 import os
 import re
 from openai import OpenAI
+from dotenv import load_dotenv
 
-import config
+load_dotenv()
+
+CEREBRAS_API_KEY = os.getenv("CEREBRAS_API_KEY", "")
+CEREBRAS_API_BASE = os.getenv("CEREBRAS_API_BASE", "https://api.cerebras.ai/v1")
+CEREBRAS_MODEL = os.getenv("CEREBRAS_MODEL", "gpt-oss-120b")
 
 SORT_SYSTEM_PROMPT = """You are a LEGO sorting assistant. Given a LEGO part name and ID, tell me which box and compartment it goes into.
 
@@ -145,18 +150,18 @@ def lookup_cavity(box, compartment):
 
 
 def classify_part(part_name, part_id):
-    api_key = os.environ.get("CEREBRAS_API_KEY") or config.CEREBRAS_API_KEY
+    api_key = CEREBRAS_API_KEY
     if not api_key:
         return "Box 5 — Detail: Empty/overflow"
 
     client = OpenAI(
         api_key=api_key,
-        base_url=config.CEREBRAS_API_BASE,
+        base_url=CEREBRAS_API_BASE,
     )
 
     try:
         response = client.chat.completions.create(
-            model=config.CEREBRAS_MODEL,
+            model=CEREBRAS_MODEL,
             messages=[
                 {"role": "system", "content": SORT_SYSTEM_PROMPT},
                 {"role": "user", "content": f"Part name: {part_name}, Part ID: {part_id}"},

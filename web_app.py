@@ -5,12 +5,18 @@ import json
 import os
 import time
 import uuid
+from dotenv import load_dotenv
 from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 import uvicorn
-import config
 import sort
+
+load_dotenv()
+
+API_URL = os.getenv("API_URL", "https://api.brickognize.com/predict/")
+REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "5"))
+CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.5"))
 
 app = FastAPI()
 
@@ -77,10 +83,10 @@ async def detect(file: UploadFile = File(...)):
         img_bytes = img_encoded.tobytes()
 
         response = requests.post(
-            config.API_URL,
+            API_URL,
             headers={"accept": "application/json"},
             files={"query_image": ("image.jpg", img_bytes, "image/jpeg")},
-            timeout=config.REQUEST_TIMEOUT
+            timeout=REQUEST_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -91,7 +97,7 @@ async def detect(file: UploadFile = File(...)):
         part = data["items"][0]
         score = part.get("score", 0)
 
-        if score < config.CONFIDENCE_THRESHOLD:
+        if score < CONFIDENCE_THRESHOLD:
             return JSONResponse({"error": f"Low confidence: {score:.2f}"})
 
         part_id = part["id"]
