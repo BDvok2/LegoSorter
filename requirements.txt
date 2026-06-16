@@ -1,7 +1,6 @@
 opencv-python
 numpy
 requests
-groups
 python-dotenv
 fastapi
 uvicorn

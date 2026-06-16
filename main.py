@@ -6,7 +6,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-import groups
 import color_detect
 
 IMAGE_FILE = os.getenv("IMAGE_FILE", "assets/test.jpg")
@@ -74,8 +73,6 @@ def detect():
     part_id = part["id"]
     part_name = part["name"]
 
-    group = groups.groupof(part_id)
-
     color = color_detect.detect_color(
         frame,
         data["bounding_box"]
@@ -84,7 +81,6 @@ def detect():
     print("\n===== LEGO RESULT =====")
     print("Part:", part_name)
     print("ID:", part_id)
-    print("Group:", group)
     print("Color:", color)
     print("=======================\n")
 
