@@ -1,27 +1,22 @@
 import os
-import cv2
 import requests
 import time
 from dotenv import load_dotenv
 
 load_dotenv()
 
-import color_detect
-
 IMAGE_FILE = os.getenv("IMAGE_FILE", "assets/test.jpg")
-API_URL = os.getenv("API_URL", "https://api.brickognize.com/predict/")
+API_URL = os.getenv("API_URL", "https://api.brickognize.com/internal/search/?external_catalogs=bricklink&predict_color=true")
 REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "5"))
 CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.5"))
 
-
-def load_image():
-    frame = cv2.imread(IMAGE_FILE)
-
-    if frame is None:
-        print("Failed to load image:", IMAGE_FILE)
-        return None
-
-    return frame
+API_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:151.0) Gecko/20100101 Firefox/151.0",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://brickognize.com/",
+    "Origin": "https://brickognize.com",
+}
 
 
 def send_to_api():
@@ -31,7 +26,7 @@ def send_to_api():
         with open(IMAGE_FILE, "rb") as img:
             response = requests.post(
                 API_URL,
-                headers={"accept": "application/json"},
+                headers=API_HEADERS,
                 files={
                     "query_image": (
                         "image.jpg",
@@ -54,29 +49,29 @@ def send_to_api():
 
 
 def detect():
-    frame = load_image()
-    if frame is None:
-        return
-
     data = send_to_api()
-    if not data or not data.get("items"):
+    if not data or not data.get("detected_items"):
         print("No part detected.")
         return
 
-    part = data["items"][0]
+    det = data["detected_items"][0]
+    candidates = det.get("candidate_items", [])
+    if not candidates:
+        print("No part detected.")
+        return
+
+    part = candidates[0]
     score = part.get("score", 0)
 
     if score < CONFIDENCE_THRESHOLD:
         print(f"Low confidence: {score:.2f}")
         return
 
-    part_id = part["id"]
+    part_id = part["id"].replace("part-", "")
     part_name = part["name"]
 
-    color = color_detect.detect_color(
-        frame,
-        data["bounding_box"]
-    )
+    colors = part.get("candidate_colors", [])
+    color = colors[0]["name"] if colors else None
 
     print("\n===== LEGO RESULT =====")
     print("Part:", part_name)
