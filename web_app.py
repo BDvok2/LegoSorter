@@ -6,8 +6,10 @@ import os
 import time
 import uuid
 from dotenv import load_dotenv
+import csv
+import io
 from fastapi import FastAPI, File, UploadFile, Form
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 import sort
@@ -66,8 +68,11 @@ def load_parts():
         parts = json.load(f)
     for p in parts:
         p.setdefault("count", 1)
-        if not p.get("cavity"):
-            _, _, _, cavity = sort.classify(p["part_name"], p["part_id"])
+        cav = p.get("cavity")
+        if not cav or not isinstance(cav, int) or cav > 5:
+            _, box, comp, cavity = sort.classify(p["part_name"], p["part_id"])
+            p["box"] = box
+            p["compartment"] = comp
             p["cavity"] = cavity
     save_parts(parts)
     return parts
@@ -97,6 +102,38 @@ async def index():
 @app.get("/api/parts")
 async def get_parts():
     return JSONResponse(load_parts())
+
+
+COLOR_MAP = {
+    "Black": 0, "Blue": 1, "Green": 2, "Red": 4, "Brown": 6,
+    "Dark Red": 320, "Dark Blue": 272, "Dark Green": 288, "Dark Brown": 308,
+    "Dark Tan": 28, "Dark Purple": 85, "Dark Azure": 321, "Dark Bluish Gray": 72,
+    "Flat Silver": 179, "Light Bluish Gray": 71, "Light Nougat": 78, "Lime": 27,
+    "Medium Azure": 322, "Medium Blue": 73, "Medium Nougat": 84,
+    "Metallic Silver": 80, "Nougat": 92, "Orange": 25, "Pearl Gold": 297,
+    "Reddish Brown": 70, "Sand Blue": 379, "Tan": 19, "White": 15, "Yellow": 14,
+    "Bright Green": 10, "Trans-Brown": 40, "Trans-Clear": 47, "Trans-Dark Blue": 33,
+    "Trans-Green": 34, "Trans-Light Blue": 41, "Trans-Neon Green": 42,
+    "Trans-Neon Orange": 57, "Trans-Orange": 182, "Trans-Red": 36, "Trans-Yellow": 46,
+}
+
+@app.get("/api/parts/export/rebrickable")
+async def export_rebrickable():
+    parts = load_parts()
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Part", "Color", "Quantity"])
+    for p in parts:
+        color = p.get("color", "")
+        if color and color not in COLOR_MAP:
+            continue
+        color_id = COLOR_MAP.get(color, "")
+        writer.writerow([p["part_id"], color_id, p.get("count", 1)])
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=rebrickable_export.csv"},
+    )
 
 
 @app.delete("/api/parts/{part_uid}")
@@ -198,10 +235,9 @@ async def save_part(
     part_id: str = Form(""),
     part_name: str = Form(""),
     color: str = Form(""),
-    count: int = Form(1),
     box: str = Form(""),
     compartment: str = Form(""),
-    cavity: str = Form(""),
+    cavity: int = Form(0),
     bbox_left: float = Form(None),
     bbox_upper: float = Form(None),
     bbox_right: float = Form(None),
@@ -236,7 +272,7 @@ async def save_part(
         idx, existing = find_part_by_id_color(parts, part_id, color)
 
         if existing is not None:
-            existing["count"] = existing.get("count", 1) + count
+            existing["count"] = existing.get("count", 1) + 1
             existing["photo"] = photo_name
             if color:
                 existing["color"] = color
@@ -248,7 +284,7 @@ async def save_part(
                 "part_id": part_id,
                 "part_name": part_name,
                 "color": color,
-                "count": count,
+                "count": 1,
                 "box": box,
                 "compartment": compartment,
                 "cavity": cavity,
