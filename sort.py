@@ -6,56 +6,95 @@ from dotenv import load_dotenv
 load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-GROQ_MODEL = os.getenv("GROQ_MODEL", "qwen/qwen3-32b")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "qwen/qwen3.6-27b")
 
-SORT_SYSTEM_PROMPT = """You are a LEGO sorting assistant. Given a LEGO part name and ID, tell me which box and compartment it goes into.
+SORT_SYSTEM_PROMPT = """
+You are a LEGO part sorting assistant.
 
-Box 1 (4 small + 1 big + 1 giant):
-  Small: Technic pins
-  Small: Technic axles
-  Small: Technic gears
-  Small: Other Technic connectors (bushings, joints, small beams)
-  Big: Technic beams, frames, and large connectors
-  Giant: Plates (all sizes)
+Input:
+- LEGO part name
+- LEGO part ID
 
-Box 2 (4 small + 1 big + 1 giant):
-  Small: 1×1 pieces (bricks, plates, round pieces)
-  Small: 1×2 pieces
-  Small: Small tiles
-  Small: Modified parts (clips, brackets, jumpers, SNOT pieces)
-  Big: Regular bricks (2×2, 2×3, 2×4, and similar)
-  Giant: Slopes and curved pieces
+The part name is the primary source of truth. The ID is only a secondary hint if the name is unclear.
 
-Box 3 (4 small + 1 big + 1 giant):
-  Small: Minifigure heads
-  Small: Minifigure hair, helmets, and hats
-  Small: Minifigure accessories (tools, weapons, backpacks, etc.)
-  Small: Minifigure legs and torsos
-  Big: Wheels, tires, and vehicle parts
-  Giant: Large special pieces (panels, walls, large decorative parts, large vehicle pieces)
+Analyze the keywords in the part name and choose exactly ONE storage location from the list below.
 
-Box 4 (4 small + 1 big + 1 enormous):
-  Small: Transparent small pieces
-  Small: Printed pieces
-  Small: Plants, animals, and food pieces
-  Small: Strings, chains, and rubber pieces
-  Big: Doors, windows, arches, and medium special parts
-  Enormous: Standard bricks and bulk bricks (2×2, 2×3, 2×4, larger bricks)
+BOX 1
+Small 1:
+- Technic pins
+Small 2:
+- Technic axles
+Small 3:
+- Technic gears
+Small 4:
+- Other Technic connectors (bushings, joints, small beams)
+Big:
+- Technic beams, frames, large connectors
 
-Box 5 (17 small compartments) — detail box:
-  1×1 plates | 1×1 bricks | 1×1 round pieces
-  1×2 plates | 1×2 bricks | Jumper plates
-  Clips | Bars | Brackets
-  Hinges | SNOT bricks | Small slopes
-  Small curved pieces | Tiny transparent pieces | Small printed pieces
-  Stud shooters and tiny special elements | Empty/overflow
+BOX 2
+Small 1:
+- 1×1 plates, bricks, and round pieces
+Small 2:
+- 1×2 plates and bricks
+Small 3:
+- Small tiles
+Small 4:
+- Modified parts (clips, brackets, jumpers, SNOT parts, hinges, bars)
+Big:
+- Regular bricks (2×2, 2×3, 2×4, similar) and standard plates
 
-Reply with ONLY the box name and compartment. Examples:
-"Box 1 — Small: Technic pins"
-"Box 2 — Big: Regular bricks"
-"Box 3 — Small: Minifigure heads"
-"Box 4 — Enormous: Standard bricks"
-"Box 5 — Detail: 1×2 plates"
+BOX 3
+Small 1:
+- Minifigure heads
+Small 2:
+- Minifigure hair, helmets, hats
+Small 3:
+- Minifigure accessories, tools, weapons, backpacks
+Small 4:
+- Minifigure legs and torsos
+Big:
+- Wheels, tires, vehicle parts, large panels, walls
+
+BOX 4
+Small 1:
+- Transparent pieces
+Small 2:
+- Plants, animals, food
+Small 3:
+- Strings, chains, rubber
+Small 4:
+- Small slopes, curved pieces, printed pieces
+Big:
+- Doors, windows, arches, large slopes, medium special parts
+
+Keyword rules:
+- "Technic Pin" → Box 1 Small 1: Technic pins
+- "Technic Axle" → Box 1 Small 2: Technic axles
+- "Gear" → Box 1 Small 3: Technic gears
+- "Plate 1 x 1" → Box 2 Small 1: 1×1 plates, bricks, and round pieces
+- "Plate 1 x 2" → Box 2 Small 2: 1×2 plates and bricks
+- "Brick 1 x 1" → Box 2 Small 1: 1×1 plates, bricks, and round pieces
+- "Brick 1 x 2" → Box 2 Small 2: 1×2 plates and bricks
+- "Tile" → Box 2 Small 3: Small tiles
+- "Slope" → Box 4 Small 4 if small, Box 4 Big if large
+- "Minifigure" or "Minifig" → Box 3 appropriate category
+- "Wheel" or "Tire" → Box 3 Big: Wheels, tires, vehicle parts
+- "Window", "Door", "Arch" → Box 4 Big: Doors, windows, arches
+- "Transparent", "Trans", "Clear" → Box 4 Small 1: Transparent pieces
+- "Plant", "Leaf", "Animal", "Food" → Box 4 Small 2: Plants, animals, food
+
+Important:
+- Use the most specific match.
+- The exact words in the part name have priority over assumptions.
+- Do NOT explain.
+- Reply with ONLY the exact location.
+
+Examples:
+Box 1 — Small 1: Technic pins
+Box 2 — Big: Regular bricks and standard plates
+Box 3 — Small 1: Minifigure heads
+Box 4 — Big: Doors, windows, arches
+Box 2 — Small 4: Modified parts
 """
 
 CAVITY_MAP = {
@@ -161,8 +200,9 @@ def classify_part(part_name, part_id):
                 {"role": "system", "content": SORT_SYSTEM_PROMPT},
                 {"role": "user", "content": f"Part name: {part_name}, Part ID: {part_id}"},
             ],
-            temperature=0.0,
-            max_completion_tokens=500,
+            temperature=0.6,
+            reasoning_effort="default",
+            max_completion_tokens=4096,
             top_p=0.95,
         )
         text = response.choices[0].message.content or ""

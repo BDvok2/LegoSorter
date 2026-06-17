@@ -13,13 +13,16 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:-ap
 #bbox-overlay{position:fixed;inset:0;z-index:2;display:none;pointer-events:none}
 #bbox-rect{position:absolute;border:3px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,0.3);box-sizing:border-box}
 
-#controls{position:fixed;bottom:48px;left:0;right:0;display:flex;justify-content:center;align-items:center;z-index:10;gap:60px}
+#controls{position:fixed;bottom:48px;left:16px;right:16px;display:flex;justify-content:space-between;align-items:center;z-index:10;gap:12px}
+#capture-btn-wrap{flex:0 0 auto;position:absolute;left:50%;transform:translateX(-50%)}
+#right-wrap{display:flex;align-items:center;gap:8px}
 #capture-btn{width:68px;height:68px;border-radius:50%;border:2px solid rgba(255,255,255,0.8);background:transparent;cursor:pointer;position:relative;transition:0.1s}
 #capture-btn:active{transform:scale(0.92)}
 #capture-btn::after{content:'';position:absolute;inset:5px;border-radius:50%;background:rgba(255,255,255,0.9)}
 
-#list-btn{width:44px;height:44px;border:none;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:white;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:0.15s}
+#list-btn{width:44px;height:44px;border:none;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:white;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:0.15s;gap:2px;position:relative}
 #list-btn:active{background:rgba(255,255,255,0.25)}
+#total-badge{display:inline-flex;align-items:center;font-size:16px;color:rgba(255,255,255,0.7);margin-left:8px}
 
 #flash-overlay{position:fixed;inset:0;z-index:5;background:white;transition:opacity 0.15s;opacity:0;pointer-events:none}
 #flash-overlay.flash{opacity:1}
@@ -95,8 +98,8 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:-ap
 <div id="loading">Analyzing</div>
 <div id="controls">
   <div style="width:44px"></div>
-  <button id="capture-btn" aria-label="Capture"></button>
-  <button id="list-btn">&#x2630;</button>
+  <div id="capture-btn-wrap"><button id="capture-btn" aria-label="Capture"></button></div>
+  <div id="right-wrap"><button id="list-btn">&#x2630;</button><span id="total-badge"></span></div>
 </div>
 
 <div id="result-overlay">
@@ -175,6 +178,17 @@ async function startCamera(){
   }
 }
 startCamera();
+
+async function updateTotalBadge(){
+  try{
+    const res = await fetch('/api/parts');
+    const parts = await res.json();
+    let total = 0;
+    parts.forEach(p => { total += p.count || 1; });
+    document.getElementById('total-badge').textContent = total;
+  }catch(e){}
+}
+updateTotalBadge();
 
 captureBtn.addEventListener('click', async () => {
   flashOverlay.classList.add('flash');
@@ -300,6 +314,7 @@ document.getElementById('r-add').addEventListener('click', async () => {
       resultOverlay.classList.remove('show');
       lastResult = null;
       unfreeze();
+      updateTotalBadge();
     }
   }catch(e){errorMsg.textContent = e.message}
   document.getElementById('r-add').textContent = 'Add';
@@ -328,9 +343,9 @@ async function loadList(){
     });
     const sortedBoxes = Object.keys(grouped).sort((a,b) => Number(a) - Number(b));
     sortedBoxes.forEach(box => {
+      let boxTotal = 0;
       const div = document.createElement('div');
       div.className = 'box-group';
-      let html = `<div class="box-head">Box ${box}</div>`;
       const cavities = grouped[box];
       const sortedCavs = Object.keys(cavities).sort((a,b) => {
         const na = parseInt(a.replace('cavity_',''));
@@ -339,7 +354,16 @@ async function loadList(){
       });
       sortedCavs.forEach(ckey => {
         const c = cavities[ckey];
-        html += `<div class="cavity-group"><div class="cavity-head"><span class="num">${c.cavity ? 'Cavity ' + c.cavity : ''}</span><span class="name">${c.name}</span></div>`;
+        let cavTotal = 0;
+        c.items.forEach(p => { cavTotal += p.count || 1; });
+        boxTotal += cavTotal;
+      });
+      let html = `<div class="box-head">Box ${box} — ${boxTotal}</div>`;
+      sortedCavs.forEach(ckey => {
+        const c = cavities[ckey];
+        let cavTotal = 0;
+        c.items.forEach(p => { cavTotal += p.count || 1; });
+        html += `<div class="cavity-group"><div class="cavity-head"><span class="num">${c.cavity ? 'Cavity ' + c.cavity : ''}</span><span class="name">${c.name} — ${cavTotal}</span></div>`;
         c.items.forEach(p => {
           const cnt = p.count || 1;
           html += `<div class="item" data-uid="${p.uid}"><img src="/data/photos/${p.photo}" alt="${p.part_id}" loading="lazy"><div class="info"><div class="pid">#${p.part_id}${p.color ? '  \u2022  ' + p.color : ''}</div><div class="name">${p.part_name}</div></div><div class="cnt-ctl"><button class="cdec" data-uid="${p.uid}">−</button><span class="cval">${cnt}</span><button class="cinc" data-uid="${p.uid}">+</button></div><button class="del" data-uid="${p.uid}">&#x2715;</button></div>`;
@@ -354,6 +378,7 @@ async function loadList(){
           e.stopPropagation();
           await fetch('/api/parts/' + uid, {method:'DELETE'});
           loadList();
+          updateTotalBadge();
         });
         const cdec = el.querySelector('.cdec');
         const cinc = el.querySelector('.cinc');
@@ -363,14 +388,14 @@ async function loadList(){
           const fd = new FormData(); fd.append('uid', uid); fd.append('delta', '-1');
           const res = await fetch('/api/adjust-count', {method:'POST',body:fd});
           const r = await res.json();
-          if(r.ok){ cval.textContent = r.count; if(r.count === 0) loadList(); }
+          if(r.ok){ cval.textContent = r.count; if(r.count === 0) loadList(); updateTotalBadge(); }
         });
         if(cinc) cinc.addEventListener('click', async (e) => {
           e.stopPropagation();
           const fd = new FormData(); fd.append('uid', uid); fd.append('delta', '1');
           const res = await fetch('/api/adjust-count', {method:'POST',body:fd});
           const r = await res.json();
-          if(r.ok){ cval.textContent = r.count; }
+          if(r.ok){ cval.textContent = r.count; updateTotalBadge(); }
         });
       });
       listItems.appendChild(div);
